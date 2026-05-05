@@ -201,6 +201,8 @@ struct SettingsFile {
     last_update_check_unix: Option<u64>,
     #[serde(default = "default_widget_visible")]
     widget_visible: bool,
+    #[serde(default = "default_monitor_index")]
+    monitor_index: u32,
 }
 
 impl Default for SettingsFile {
@@ -211,6 +213,7 @@ impl Default for SettingsFile {
             language: None,
             last_update_check_unix: None,
             widget_visible: true,
+            monitor_index: default_monitor_index(),
         }
     }
 }
@@ -221,6 +224,10 @@ fn default_poll_interval() -> u32 {
 
 fn default_widget_visible() -> bool {
     true
+}
+
+fn default_monitor_index() -> u32 {
+    0
 }
 
 fn load_settings() -> SettingsFile {
@@ -879,7 +886,7 @@ pub fn run() {
         }
 
         // Try to embed in taskbar
-        if let Some(taskbar_hwnd) = native_interop::find_taskbar() {
+        if let Some(taskbar_hwnd) = native_interop::find_taskbar_by_monitor(settings.monitor_index) {
             diagnose::log(format!("taskbar found hwnd={:?}", taskbar_hwnd));
             native_interop::embed_in_taskbar(hwnd, taskbar_hwnd);
             embedded = true;

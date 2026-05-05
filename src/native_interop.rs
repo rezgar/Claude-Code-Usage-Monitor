@@ -3,6 +3,7 @@ use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_GETTASKBARPOS, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::Win32::Graphics::Gdi::{EnumDisplayMonitorsW, HMONITOR};
 
 // Window style constants
 pub const WS_POPUP_STYLE: u32 = 0x80000000;
@@ -26,13 +27,56 @@ pub const WM_APP_TRAY: u32 = WM_APP + 3;
 
 /// Get the taskbar window handle
 pub fn find_taskbar() -> Option<HWND> {
+    find_taskbar_by_monitor(0)
+}
+
+/// Get the taskbar window handle for a specific monitor (0 = primary, 1 = secondary, etc.)
+pub fn find_taskbar_by_monitor(monitor_index: u32) -> Option<HWND> {
     unsafe {
-        let class = wide_str("Shell_TrayWnd");
-        match FindWindowW(PCWSTR::from_raw(class.as_ptr()), PCWSTR::null()) {
-            Ok(h) if h != HWND::default() => Some(h),
-            _ => None,
+        let mut found_index = 0u32;
+        let mut result: Option<HWND> = None;
+
+        let enumerate_result = EnumDisplayMonitorsW(
+            None,
+            None,
+            Some(enum_monitor_callback),
+            std::mem::transmute(&mut (found_index, result, monitor_index)),
+        );
+
+        if enumerate_result.as_bool() {
+            result
+        } else {
+            None
         }
     }
+}
+
+unsafe extern "system" fn enum_monitor_callback(
+    _hmonitor: HMONITOR,
+    _hdc: windows::Win32::Graphics::Gdi::HDC,
+    _lprect: *mut RECT,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::BOOL {
+    let state = lparam.0 as *mut (u32, Option<HWND>, u32);
+    if state.is_null() {
+        return windows::Win32::Foundation::BOOL(1);
+    }
+
+    let (ref mut current_index, ref mut result, target_index) = *state;
+
+    if *current_index == *target_index {
+        let class = wide_str("Shell_TrayWnd");
+        match FindWindowW(PCWSTR::from_raw(class.as_ptr()), PCWSTR::null()) {
+            Ok(h) if h != HWND::default() => {
+                *result = Some(h);
+                return windows::Win32::Foundation::BOOL(0);
+            }
+            _ => {}
+        }
+    }
+
+    *current_index += 1;
+    windows::Win32::Foundation::BOOL(1)
 }
 
 /// Find a child window by class name
